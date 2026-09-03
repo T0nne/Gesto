@@ -1,0 +1,399 @@
+/* ==========================================================================
+   GESTURE POWERS — design tokens
+   Base: laboratório holográfico escuro. Acento duplo ciano/violeta (não é
+   o verde-ácido/vermelhão padrão de IA) porque o brief pede uma vibe de
+   "poderes controlados pela mão" — luz de plasma, não neon genérico.
+   Cada poder tem sua própria cor definida em --power-* e aplicada via
+   classe no <body> (ver script.js).
+   ========================================================================== */
+
+:root {
+  --bg: #060814;
+  --bg-deep: #030308;
+  --panel: rgba(10, 14, 28, 0.62);
+  --panel-border: rgba(140, 170, 255, 0.16);
+  --ink: #eef2ff;
+  --ink-dim: #93a0c4;
+  --cyan: #4de8ff;
+  --violet: #9b6bff;
+
+  --power-fire-a: #ff7a3d;
+  --power-fire-b: #ffb648;
+  --power-lightning-a: #7ad7ff;
+  --power-lightning-b: #b58bff;
+  --power-explosion-a: #ffb347;
+  --power-explosion-b: #ff5252;
+  --power-energy-a: #7cffd6;
+  --power-energy-b: #8b6bff;
+  --power-ice-a: #bdf1ff;
+  --power-ice-b: #6fb8ff;
+
+  --power-a: var(--power-lightning-a);
+  --power-b: var(--power-lightning-b);
+
+  --font-display: 'Orbitron', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-deep);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---------------------------------------------------------------------- */
+/* GATE (tela inicial de permissão)                                       */
+/* ---------------------------------------------------------------------- */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(120, 110, 255, 0.22), transparent 60%),
+    radial-gradient(90% 70% at 90% 110%, rgba(77, 232, 255, 0.14), transparent 55%),
+    var(--bg);
+}
+.gate--hidden { display: none; }
+
+.gate-card {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  padding: 36px 28px 30px;
+  border-radius: 22px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+}
+
+.gate-glyph { display: flex; justify-content: center; margin-bottom: 14px; }
+.gate-ring { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: 0.7; }
+.gate-ring--2 { stroke: var(--violet); animation: spin 7s linear infinite; transform-origin: 60px 60px; }
+.gate-ring--1 { animation: spin 11s linear infinite reverse; transform-origin: 60px 60px; }
+.gate-cross { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+  text-transform: lowercase;
+}
+.gate-card h1 {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(28px, 8vw, 38px);
+  letter-spacing: 0.03em;
+  margin: 0 0 14px;
+  background: linear-gradient(90deg, var(--cyan), var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.gate-copy {
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+.gate-status {
+  min-height: 20px;
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  color: var(--cyan);
+}
+.gate-legend {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--panel-border);
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.gate-legend li { display: flex; align-items: center; gap: 10px; }
+.gate-legend span:first-child { font-size: 17px; }
+
+/* ---------------------------------------------------------------------- */
+/* BOTÕES                                                                  */
+/* ---------------------------------------------------------------------- */
+.btn {
+  border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,0.04);
+  color: var(--ink);
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.btn--primary {
+  background: linear-gradient(120deg, var(--cyan), var(--violet));
+  color: #06070f;
+  border: none;
+}
+.btn--big { width: 100%; padding: 16px; font-size: 14px; }
+.btn--primary:active { transform: scale(0.98); }
+
+/* ---------------------------------------------------------------------- */
+/* PALCO PRINCIPAL                                                        */
+/* ---------------------------------------------------------------------- */
+.stage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+}
+.stage--hidden { display: none; }
+
+.stage-video, .stage-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.stage-video { transform: scaleX(-1); }        /* espelha câmera frontal */
+.stage-video.is-back { transform: none; }       /* câmera traseira: sem espelho */
+.stage-canvas { pointer-events: none; }
+
+.flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+}
+.flash.is-active { animation: flashPop 320ms ease-out; }
+@keyframes flashPop { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+
+/* ---------------------------------------------------------------------- */
+/* HUD SUPERIOR                                                           */
+/* ---------------------------------------------------------------------- */
+.hud-top {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 240ms ease;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+}
+.brand-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--power-a);
+  box-shadow: 0 0 10px 2px var(--power-a);
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+}
+
+.power-readout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+  min-width: 0;
+}
+.power-readout-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+}
+.power-readout-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--power-a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.hand-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.hand-status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ff5566;
+  box-shadow: 0 0 8px 1px #ff5566;
+}
+.hand-status--on .hand-status-dot { background: #63ffb0; box-shadow: 0 0 8px 1px #63ffb0; }
+.hand-status--on #handStatusText { color: #bdf7dc; }
+
+/* ---------------------------------------------------------------------- */
+/* TOAST DE FEEDBACK                                                      */
+/* ---------------------------------------------------------------------- */
+.toast {
+  position: absolute;
+  top: calc(var(--safe-top) + 66px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  z-index: 11;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(8, 10, 22, 0.75);
+  border: 1px solid var(--power-a);
+  box-shadow: 0 0 24px -4px var(--power-a);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------------------------------------------------------------------- */
+/* CONTROLES LATERAIS                                                     */
+/* ---------------------------------------------------------------------- */
+.side-controls {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: opacity 240ms ease;
+}
+.icon-btn {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--ink);
+  backdrop-filter: blur(10px);
+}
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn--shutter {
+  width: 58px; height: 58px;
+  color: var(--power-a);
+  border-color: var(--power-a);
+  box-shadow: 0 0 18px -4px var(--power-a);
+}
+.icon-btn.is-on {
+  color: #06070f;
+  background: linear-gradient(120deg, var(--cyan), var(--violet));
+  border-color: transparent;
+}
+
+/* ---------------------------------------------------------------------- */
+/* SELETOR DE PODERES                                                     */
+/* ---------------------------------------------------------------------- */
+.hud-bottom {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 14px);
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.power-selector {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(14px);
+}
+.power-btn {
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-dim);
+  filter: grayscale(0.6) brightness(0.8);
+  transition: transform 150ms ease, filter 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.power-btn.is-active {
+  filter: none;
+  background: rgba(255,255,255,0.08);
+  border-color: var(--power-a);
+  box-shadow: 0 0 16px -4px var(--power-a);
+  transform: translateY(-3px);
+}
+
+/* ---------------------------------------------------------------------- */
+/* POWER MODE — reduz a interface ao essencial                            */
+/* ---------------------------------------------------------------------- */
+body.power-mode .brand,
+body.power-mode .side-controls .icon-btn:not(.icon-btn--shutter),
+body.power-mode .gate-legend {
+  opacity: 0;
+  pointer-events: none;
+}
+body.power-mode .hud-bottom { transform: translateY(120%); opacity: 0; pointer-events: none; }
+body.power-mode .power-readout { background: transparent; border-color: transparent; }
+body.power-mode .icon-btn--shutter { opacity: 0.55; }
+
+/* pequenas telas */
+@media (max-width: 360px) {
+  .power-btn { width: 40px; height: 40px; font-size: 18px; }
+  .icon-btn { width: 44px; height: 44px; }
+}

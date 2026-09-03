@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#060814" />
+<title>GESTURE POWERS · Controle poderes com as mãos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============ TELA DE ENTRADA / PERMISSÃO ============ -->
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <div class="gate-glyph" aria-hidden="true">
+        <svg viewBox="0 0 120 120" width="72" height="72">
+          <circle cx="60" cy="60" r="46" class="gate-ring gate-ring--1"/>
+          <circle cx="60" cy="60" r="34" class="gate-ring gate-ring--2"/>
+          <path d="M60 22 L60 40 M60 80 L60 98 M22 60 L40 60 M80 60 L98 60" class="gate-cross"/>
+        </svg>
+      </div>
+      <p class="eyebrow">laboratório de gestos</p>
+      <h1>GESTURE&nbsp;POWERS</h1>
+      <p class="gate-copy">
+        Aponte a câmera para sua mão. Cada gesto liga um poder diferente —
+        tudo roda localmente no seu navegador, nada é enviado para fora do aparelho.
+      </p>
+      <button id="startBtn" class="btn btn--primary btn--big">Ativar câmera</button>
+      <p id="gateStatus" class="gate-status" role="status" aria-live="polite"></p>
+      <ul class="gate-legend">
+        <li><span>✋</span> palma aberta → energia</li>
+        <li><span>☝️</span> indicador → raio</li>
+        <li><span>✊</span> punho → explosão</li>
+        <li><span>🤏</span> pinça → esfera</li>
+        <li><span>👋</span> aceno → trocar poder</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ MENSAGEM DE DISPOSITIVO NÃO SUPORTADO ============ -->
+  <div id="unsupported" class="gate gate--hidden">
+    <div class="gate-card">
+      <p class="eyebrow">ops</p>
+      <h1>Não deu pra ligar o laboratório</h1>
+      <p class="gate-copy" id="unsupportedMsg">
+        Este navegador não conseguiu acessar a câmera ou o reconhecimento de mãos.
+        Tente usar o Chrome ou Safari atualizado, em uma conexão https, e permita o acesso à câmera.
+      </p>
+      <button id="retryBtn" class="btn btn--primary">Tentar novamente</button>
+    </div>
+  </div>
+
+  <!-- ============ PALCO PRINCIPAL (câmera + canvas) ============ -->
+  <main id="stage" class="stage stage--hidden">
+
+    <video id="video" class="stage-video" playsinline autoplay muted></video>
+    <canvas id="fx" class="stage-canvas"></canvas>
+
+    <!-- flash de captura de foto -->
+    <div id="flash" class="flash"></div>
+
+    <!-- ---------- HUD SUPERIOR ---------- -->
+    <header class="hud-top">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">GESTURE POWERS</span>
+      </div>
+      <div class="power-readout">
+        <span class="power-readout-label">POWER</span>
+        <span id="powerReadout" class="power-readout-value">⚡ LIGHTNING</span>
+      </div>
+      <div id="handStatus" class="hand-status hand-status--off">
+        <span class="hand-status-dot"></span>
+        <span id="handStatusText">HAND: NOT DETECTED</span>
+      </div>
+    </header>
+
+    <!-- ---------- TOAST DE FEEDBACK DE GESTO ---------- -->
+    <div id="toast" class="toast" aria-live="polite"></div>
+
+    <!-- ---------- BOTÕES LATERAIS ---------- -->
+    <div class="side-controls">
+      <button id="flipBtn" class="icon-btn" title="Trocar câmera" aria-label="Trocar câmera">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M17 2l3 3-3 3M7 22l-3-3 3-3M4 12a8 8 0 0 1 13.66-5.66M20 12a8 8 0 0 1-13.66 5.66" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="modeBtn" class="icon-btn" title="Power Mode" aria-label="Ativar Power Mode">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M13 2 4 14h7l-1 8 10-13h-7l0-7z" fill="currentColor"/></svg>
+      </button>
+      <button id="photoBtn" class="icon-btn icon-btn--shutter" title="Foto (ou faça ✌️)" aria-label="Tirar foto">
+        <svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <!-- ---------- SELETOR DE PODERES ---------- -->
+    <footer class="hud-bottom">
+      <div id="powerSelector" class="power-selector" role="tablist" aria-label="Selecionar poder">
+        <button class="power-btn" data-power="fire" role="tab" aria-selected="false">🔥</button>
+        <button class="power-btn is-active" data-power="lightning" role="tab" aria-selected="true">⚡</button>
+        <button class="power-btn" data-power="explosion" role="tab" aria-selected="false">💥</button>
+        <button class="power-btn" data-power="energy" role="tab" aria-selected="false">🌀</button>
+        <button class="power-btn" data-power="ice" role="tab" aria-selected="false">❄️</button>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- MediaPipe Tasks Vision (hand tracking), carregado via CDN como módulo ES -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>
