@@ -1,107 +1,432 @@
-/* ==========================================================================
-   GESTURE POWERS — script.js
-   Reconhecimento de mãos 100% no navegador (MediaPipe Tasks Vision,
-   HandLandmarker) + efeitos em Canvas2D + Web Audio API.
-   Nenhum dado de câmera sai do dispositivo — tudo roda localmente.
-   ========================================================================== */
+/**
+ * GESTURE POWERS - Advanced VFX Engine
+ * Powered by MediaPipe & Web Audio API
+ */
 
 import {
   HandLandmarker,
-  FilesetResolver,
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+  FilesetResolver
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-/* --------------------------------------------------------------------- */
-/* 1. REFERÊNCIAS DE DOM                                                  */
-/* --------------------------------------------------------------------- */
-const $ = (id) => document.getElementById(id);
-
-const gate = $("gate");
-const gateStatus = $("gateStatus");
-const startBtn = $("startBtn");
-const unsupported = $("unsupported");
-const unsupportedMsg = $("unsupportedMsg");
-const retryBtn = $("retryBtn");
-
-const stage = $("stage");
-const video = $("video");
-const canvas = $("fx");
-const ctx = canvas.getContext("2d");
-const flashEl = $("flash");
-
-const powerReadout = $("powerReadout");
-const handStatus = $("handStatus");
-const handStatusText = $("handStatusText");
-const toastEl = $("toast");
-
-const flipBtn = $("flipBtn");
-const modeBtn = $("modeBtn");
-const photoBtn = $("photoBtn");
-const powerSelector = $("powerSelector");
-
-/* --------------------------------------------------------------------- */
-/* 2. DEFINIÇÃO DOS PODERES                                               */
-/* Cada poder define paleta de cor e "personalidade" das partículas.      */
-/* O GESTO define a FORMA do efeito (raio, explosão, esfera, brilho);     */
-/* o PODER selecionado define a COR e o comportamento das partículas.     */
-/* --------------------------------------------------------------------- */
-const POWERS = {
-  fire: {
-    name: "🔥 FIRE",
-    a: "#ff7a3d", b: "#ffb648",
-    spread: 0.9, gravity: -0.02, drag: 0.965, flicker: true,
-  },
-  lightning: {
-    name: "⚡ LIGHTNING",
-    a: "#7ad7ff", b: "#b58bff",
-    spread: 0.3, gravity: 0, drag: 0.9, flicker: true,
-  },
-  explosion: {
-    name: "💥 EXPLOSION",
-    a: "#ffb347", b: "#ff5252",
-    spread: 1.6, gravity: 0.01, drag: 0.94, flicker: false,
-  },
-  energy: {
-    name: "🌀 ENERGY",
-    a: "#7cffd6", b: "#8b6bff",
-    spread: 0.5, gravity: 0, drag: 0.985, flicker: false,
-  },
-  ice: {
-    name: "❄️ ICE",
-    a: "#bdf1ff", b: "#6fb8ff",
-    spread: 0.7, gravity: 0.015, drag: 0.97, flicker: false,
-  },
+// --- CONFIGURAÇÕES ---
+const CONFIG = {
+  smoothing: 0.25, // Suavização do movimento (0-1)
+  maxParticles: 450,
+  chargeTime: 1200, // ms para carga total
+  launchThreshold: 1.8, // Sensibilidade de lançamento (velocidade)
+  isMobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 };
-const POWER_ORDER = ["fire", "lightning", "explosion", "energy", "ice"];
 
-/* --------------------------------------------------------------------- */
-/* 3. ESTADO GLOBAL DA APLICAÇÃO                                          */
-/* --------------------------------------------------------------------- */
+// --- ESTADOS DO SISTEMA ---
 const state = {
-  currentPower: "lightning",
-  facingMode: "user",      // "user" = frontal, "environment" = traseira
-  powerModeOn: false,
-  handDetected: false,
-  running: false,
-
-  // landmarks normalizados (0..1) da mão mais confiável do frame atual
-  landmarks: null,
-
-  // gesto confirmado (após filtro de estabilidade) neste frame
-  activeGesture: "none",
-
-  // contadores para debounce/estabilidade de gesto
-  gestureCounts: { open: 0, fist: 0, point: 0, pinch: 0, peace: 0 },
-  lastEdgeGesture: "none",     // último gesto "discreto" já dis­parado
-  lastTriggerTime: { fist: 0, wave: 0, peace: 0 },
-
-  // histórico de posição do pulso, usado para detectar aceno
-  wristHistory: [],
-
-  // posição suavizada usada para desenhar (evita tremedeira)
-  smoothPoint: null,
+  active: false,
+  power: 'lightning', // fire, lightning, explosion, energy, ice
+  handPresent: false,
+  handPos: { x: 0, y: 0, z: 0, vx: 0, vy: 0 }, // Posição e velocidade
+  lastHandPos: { x: 0, y: 0 },
+  charge: 0, // 0 a 1
+  isCharging: false,
+  powerMode: false,
+  handLandmarks: null,
+  cameraFacing: 'user',
+  audioCtx: null
 };
 
-let handLandmarker = null;
+// --- DEFINIÇÃO VISUAL DOS PODERES ---
+const POWER_DATA = {
+  fire: { colors: ['#ff4500', '#ff8c00', '#ffd700'], emoji: '🔥', label: 'INFERNO' },
+  lightning: { colors: ['#00d2ff', '#3a7bd5', '#ffffff'], emoji: '⚡', label: 'VOLTAGE' },
+  explosion: { colors: ['#ff0000', '#ff6600', '#550000'], emoji: '💥', label: 'NOVA' },
+  energy: { colors: ['#00ffcc', '#0099ff', '#aa00ff'], emoji: '🌀', label: 'ORBITAL' },
+  ice: { colors: ['#bdf1ff', '#6fb8ff', '#ffffff'], emoji: '❄️', label: 'FROST' }
+};
+
+// --- CLASSES DE LÓGICA ---
+
+class Particle {
+  constructor(x, y, color, vx, vy, life, size, type = 'glow') {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.color = color;
+    this.maxLife = life;
+    this.life = life;
+    this.size = size;
+    this.type = type; // glow, spark, smoke, trail
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.life -= dt;
+  }
+}
+
+class Projectile {
+  constructor(x, y, vx, vy, type) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.type = type;
+    this.active = true;
+    this.life = 2.0;
+  }
+}
+
+// --- ENGINE PRINCIPAL ---
+
+class PowerEngine {
+  constructor() {
+    this.canvas = document.getElementById('fx');
+    this.ctx = this.canvas.getContext('2d', { alpha: true });
+    this.particles = [];
+    this.projectiles = [];
+    this.lastTime = performance.now();
+    this.shake = 0;
+    this.init();
+  }
+
+  init() {
+    window.addEventListener('resize', () => this.resize());
+    this.resize();
+    this.loop();
+  }
+
+  resize() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+  }
+
+  addParticle(p) {
+    if (this.particles.length < CONFIG.maxParticles) this.particles.push(p);
+  }
+
+  createImpact(x, y, colorSet) {
+    this.shake = 15;
+    for (let i = 0; i < 30; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 8;
+      this.addParticle(new Particle(x, y, colorSet[0], Math.cos(ang)*speed, Math.sin(ang)*speed, 0.8, 4 + Math.random()*4, 'spark'));
+    }
+  }
+
+  update(dt) {
+    if (this.shake > 0) this.shake *= 0.9;
+    
+    // Processar Partículas
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.update(dt);
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+
+    // Processar Projéteis
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.projectiles[i];
+      pr.x += pr.vx * dt * 500;
+      pr.y += pr.vy * dt * 500;
+      pr.life -= dt;
+      
+      // Trail do projétil
+      this.addParticle(new Particle(pr.x, pr.y, POWER_DATA[pr.type].colors[0], (Math.random()-0.5)*2, (Math.random()-0.5)*2, 0.5, 10, 'trail'));
+
+      if (pr.life <= 0) {
+        this.createImpact(pr.x, pr.y, POWER_DATA[pr.type].colors);
+        this.projectiles.splice(i, 1);
+      }
+    }
+
+    // Gerar efeitos na mão
+    if (state.handPresent) {
+      this.emitHandEffects();
+    }
+  }
+
+  emitHandEffects() {
+    const colors = POWER_DATA[state.power].colors;
+    const x = state.handPos.x * this.canvas.width;
+    const y = state.handPos.y * this.canvas.height;
+    const intensity = state.charge * 1.5 + 1;
+
+    switch(state.power) {
+      case 'fire':
+        for(let i=0; i<3 * intensity; i++) {
+          this.addParticle(new Particle(x + (Math.random()-0.5)*40, y, colors[Math.floor(Math.random()*2)], (Math.random()-0.5)*2, -2 - Math.random()*3, 0.6, 15 + Math.random()*20, 'glow'));
+        }
+        break;
+      case 'lightning':
+        if(Math.random() > 0.7) {
+          this.addParticle(new Particle(x, y, colors[2], (Math.random()-0.5)*15, (Math.random()-0.5)*15, 0.2, 2, 'spark'));
+        }
+        break;
+      case 'energy':
+        const ang = performance.now() * 0.01;
+        const rx = Math.cos(ang) * 40;
+        const ry = Math.sin(ang) * 40;
+        this.addParticle(new Particle(x + rx, y + ry, colors[0], 0, 0, 0.4, 8, 'trail'));
+        this.addParticle(new Particle(x - rx, y - ry, colors[1], 0, 0, 0.4, 8, 'trail'));
+        break;
+      case 'ice':
+        if(Math.random() > 0.8) {
+           this.addParticle(new Particle(x + (Math.random()-0.5)*60, y + (Math.random()-0.5)*60, colors[0], 0, 1, 1.2, 5, 'spark'));
+        }
+        break;
+    }
+  }
+
+  draw() {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    if (this.shake > 0) {
+      ctx.save();
+      ctx.translate((Math.random()-0.5)*this.shake, (Math.random()-0.5)*this.shake);
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    this.particles.forEach(p => {
+      const ratio = p.life / p.maxLife;
+      ctx.beginPath();
+      
+      if (p.type === 'glow') {
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = ratio * 0.6;
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = ratio;
+        ctx.arc(p.x, p.y, p.size * ratio, 0, Math.PI*2);
+      }
+      ctx.fill();
+    });
+
+    // HUD de Carga na mão
+    if (state.handPresent && state.charge > 0.1) {
+      const x = state.handPos.x * this.canvas.width;
+      const y = state.handPos.y * this.canvas.height;
+      ctx.strokeStyle = POWER_DATA[state.power].colors[0];
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 50, -Math.PI/2, (-Math.PI/2) + (Math.PI*2*state.charge));
+      ctx.stroke();
+    }
+
+    if (this.shake > 0) ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  loop() {
+    const now = performance.now();
+    const dt = (now - this.lastTime) / 1000;
+    this.lastTime = now;
+
+    this.update(dt);
+    this.draw();
+    requestAnimationFrame(() => this.loop());
+  }
+}
+
+// --- ÁUDIO SINTETIZADO ---
+const SoundEngine = {
+  init() {
+    if (state.audioCtx) return;
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  },
+  play(type) {
+    this.init();
+    const ctx = state.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'launch') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.2);
+    } else if (type === 'impact') {
+      const noise = ctx.createBufferSource();
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      noise.buffer = buffer;
+      const nGain = ctx.createGain();
+      noise.connect(nGain);
+      nGain.connect(ctx.destination);
+      nGain.gain.setValueAtTime(0.5, ctx.currentTime);
+      nGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      noise.start();
+      return;
+    }
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+  }
+};
+
+// --- RECONHECIMENTO E GESTOS ---
+
+let handLandmarker;
+const video = document.getElementById('video');
+const engine = new PowerEngine();
+
+async function initMediaPipe() {
+  const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+    runningMode: "VIDEO",
+    numHands: 1
+  });
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('gateStatus').innerText = "Laboratório pronto. Ative a câmera.";
+}
+
+function detectGesture(landmarks) {
+  // Landmarks chave: 4 (polegar), 8 (indicador), 12 (médio), 16 (anelar), 20 (mínimo), 0 (pulso), 9 (palma)
+  const getDist = (a, b) => Math.hypot(landmarks[a].x - landmarks[b].x, landmarks[a].y - landmarks[b].y);
+  
+  const isIndexUp = landmarks[8].y < landmarks[6].y && landmarks[12].y > landmarks[10].y;
+  const isFist = getDist(8, 0) < 0.2 && getDist(12, 0) < 0.2;
+  const isPalm = landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y && landmarks[20].y < landmarks[18].y;
+  const isPinch = getDist(4, 8) < 0.04;
+
+  if (isFist) return 'fist';
+  if (isPinch) return 'pinch';
+  if (isIndexUp) return 'index';
+  if (isPalm) return 'palm';
+  return 'none';
+}
+
+async function processVideo() {
+  if (video.paused || video.ended) return;
+
+  if (handLandmarker) {
+    const startTimeMs = performance.now();
+    const results = handLandmarker.detectForVideo(video, startTimeMs);
+    
+    if (results.landmarks && results.landmarks.length > 0) {
+      const h = results.landmarks[0];
+      state.handPresent = true;
+      
+      // Suavização da posição (Lerp)
+      const targetX = state.cameraFacing === 'user' ? 1 - h[9].x : h[9].x;
+      state.handPos.x += (targetX - state.handPos.x) * CONFIG.smoothing;
+      state.handPos.y += (h[9].y - state.handPos.y) * CONFIG.smoothing;
+      
+      // Velocidade
+      state.handPos.vx = state.handPos.x - state.lastHandPos.x;
+      state.handPos.vy = state.handPos.y - state.lastHandPos.y;
+      state.lastHandPos = { x: state.handPos.x, y: state.handPos.y };
+
+      const gesture = detectGesture(h);
+      handleGestureLogic(gesture);
+      
+      document.getElementById('handStatus').className = "hand-status hand-status--on";
+      document.getElementById('handStatusText').innerText = "HAND: TRACKING";
+    } else {
+      state.handPresent = false;
+      state.charge = 0;
+      document.getElementById('handStatus').className = "hand-status hand-status--off";
+      document.getElementById('handStatusText').innerText = "HAND: NOT DETECTED";
+    }
+  }
+  requestAnimationFrame(processVideo);
+}
+
+function handleGestureLogic(gesture) {
+  const isMatching = (state.power === 'fire' && gesture === 'palm') ||
+                    (state.power === 'lightning' && gesture === 'index') ||
+                    (state.power === 'explosion' && gesture === 'fist') ||
+                    (state.power === 'energy' && gesture === 'pinch') ||
+                    (state.power === 'ice' && gesture === 'palm');
+
+  if (isMatching) {
+    state.charge = Math.min(1, state.charge + 0.02);
+    // Disparo por velocidade
+    const speed = Math.hypot(state.handPos.vx, state.handPos.vy) * 100;
+    if (speed > CONFIG.launchThreshold && state.charge > 0.3) {
+      launchPower();
+    }
+  } else {
+    state.charge = Math.max(0, state.charge - 0.05);
+  }
+}
+
+function launchPower() {
+  const vx = state.handPos.vx * 15;
+  const vy = state.handPos.vy * 15;
+  const x = state.handPos.x * engine.canvas.width;
+  const y = state.handPos.y * engine.canvas.height;
+  
+  engine.projectiles.push(new Projectile(x, y, vx, vy, state.power));
+  SoundEngine.play('launch');
+  state.charge = 0;
+  
+  showToast(`${POWER_DATA[state.power].label} RELEASED!`);
+}
+
+// --- INTERFACE E CONTROLES ---
+
+function showToast(txt) {
+  const t = document.getElementById('toast');
+  t.innerText = txt;
+  t.classList.add('is-visible');
+  setTimeout(() => t.classList.remove('is-visible'), 2000);
+}
+
+document.querySelectorAll('.power-btn').forEach(btn => {
+  btn.onclick = () => {
+    state.power = btn.dataset.power;
+    document.querySelector('.power-btn.is-active').classList.remove('is-active');
+    btn.classList.add('is-active');
+    document.getElementById('powerReadout').innerText = `${POWER_DATA[state.power].emoji} ${POWER_DATA[state.power].label}`;
+    document.body.style.setProperty('--power-a', POWER_DATA[state.power].colors[0]);
+    state.charge = 0;
+  };
+});
+
+document.getElementById('startBtn').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: state.cameraFacing, width: 1280, height: 720 } });
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      video.play();
+      document.getElementById('gate').classList.add('gate--hidden');
+      document.getElementById('stage').classList.remove('stage--hidden');
+      SoundEngine.init();
+      processVideo();
+    };
+  } catch (e) {
+    alert("Erro ao acessar câmera: " + e.message);
+  }
+};
+
+document.getElementById('modeBtn').onclick = () => {
+  state.powerMode = !state.powerMode;
+  document.body.classList.toggle('power-mode', state.powerMode);
+  showToast(state.powerMode ? "POWER MODE: MAX" : "POWER MODE: NORMAL");
+};
+
+document.getElementById('photoBtn').onclick = () => {
+  const flash = document.getElementById('flash');
+  flash.classList.add('is-active');
+  setTimeout(() => flash.classList.remove('is-active'), 400);
+  SoundEngine.play('impact');
+  // Aqui você pode adicionar a lógica de capturar o canvas + vídeo se desejar
+};
+
+document.getElementById('flipBtn').onclick = async () => {
+  state.cameraFacing = state.cameraFacing === 'user' ? 'environment' : 'user';
+  video.classList.toggle('is-back', state.cameraFacing === 'environment');
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: state.cameraFacing } });
+  video.srcObject = stream;
+};
+
+// Iniciar app
+initMediaPipe();let handLandmarker = null;
 let particles = [];
 let energyBall = null; // {x,y} quando pinça está ativa, com suavização própria
 let rafId = null;
